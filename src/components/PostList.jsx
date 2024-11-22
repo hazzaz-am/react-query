@@ -1,15 +1,20 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addPost, fetchPosts, fetchTags } from "../api/api";
+import { useState } from "react";
 
 const PostList = () => {
+	const [page, setPage] = useState(1);
+	const queryClient = useQueryClient();
+
 	const {
 		data: postsData,
 		isLoading,
 		isError,
 		error,
 	} = useQuery({
-		queryKey: ["posts"],
-		queryFn: fetchPosts,
+		queryKey: ["posts", { page }],
+		queryFn: () => fetchPosts(page),
+		staleTime: 1000 * 60 * 5
 	});
 
 	const { data: tagsData } = useQuery({
@@ -25,6 +30,17 @@ const PostList = () => {
 		reset,
 	} = useMutation({
 		mutationFn: addPost,
+		onMutate: () => {
+			return { id: 1 };
+		},
+		onSuccess: (data, variables, context) => {
+			queryClient.invalidateQueries({
+				queryKey: ["posts"],
+				exact: true,
+			});
+		},
+		// onError: (error, variables, context) => {},
+		// onSettled: (data, error, variables, context) => {},
 	});
 
 	const handleSubmit = (event) => {
@@ -39,9 +55,11 @@ const PostList = () => {
 			return;
 		}
 
-		mutate({id: postsData.length + 1, title, tags });
-    event.target.reset()
+		mutate({ id: postsData?.data?.length + 1, title, tags });
+		event.target.reset();
 	};
+
+	console.log(postsData);
 
 	return (
 		<div className="container">
@@ -65,9 +83,21 @@ const PostList = () => {
 				</button>
 			</form>
 
-			{isLoading && <p>Loading.........</p>}
-			{isError && <p>{error.message}</p>}
-			{postsData?.map((post) => (
+			{isLoading && isPending && <p>Loading.........</p>}
+			{isError && <p>{error?.message}</p>}
+			{isPostError && (
+				<p>
+					Unable to Post <button onClick={() => reset()}>Reset</button>
+				</p>
+			)}
+
+			<div className="pages">
+				<button onClick={() => setPage((oldPage) => Math.max(oldPage - 1, 0))} disabled={!postsData?.prev}>Previous</button>
+				<span>{page}</span>
+				<button onClick={() => setPage((nextPage) => nextPage + 1)} disabled={!postsData?.next}>Next</button>
+			</div>
+
+			{postsData?.data?.map((post) => (
 				<div className="post" key={post.id}>
 					<div>{post.title}</div>
 					{post?.tags?.map((tag) => (
